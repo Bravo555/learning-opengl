@@ -7,3 +7,4 @@ edition = "2018"
 [dependencies]
 glium = "0.25.0"
 image = "0.21.2"
+nalgebra = "0.18.0"
