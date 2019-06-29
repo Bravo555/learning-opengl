@@ -42,6 +42,8 @@ fn main() {
 
     let (width, height) = display.get_framebuffer_dimensions();
 
+    let radius = 10.0;
+
     let view: [[f32; 4]; 4] =
         na::Matrix4::new_translation(&na::Vector3::new(0.0, 0.0, -3.0)).into();
     let projection: [[f32; 4]; 4] =
@@ -78,6 +80,15 @@ fn main() {
         });
 
         let time_since: f32 = last_time.elapsed().as_millis() as f32 / 1000.0;
+
+        let cam_x = time_since.sin() * radius;
+        let cam_z = time_since.cos() * radius;
+        let camera_pos = na::Point3::new(cam_x, 0.0, cam_z);
+        let target = na::Point3::origin();
+        let up = na::Vector3::y();
+
+        let view = na::Matrix4::look_at_rh(&camera_pos, &target, &up);
+        let view: [[f32; 4]; 4] = view.into();
 
         let mut target = display.draw();
         target.clear_color_and_depth((0.1, 0.1, 0.1, 1.0), 1.0);
