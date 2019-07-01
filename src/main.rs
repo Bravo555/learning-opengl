@@ -3,7 +3,8 @@ mod points;
 use glium::{glutin, implement_vertex, uniform, Surface};
 use nalgebra as na;
 use points::{Vertex, SHAPE};
-use std::time::{Duration, Instant};
+use std::collections::HashMap;
+use std::time::Instant;
 implement_vertex!(Vertex, position, texture);
 
 fn main() {
@@ -42,10 +43,6 @@ fn main() {
 
     let (width, height) = display.get_framebuffer_dimensions();
 
-    let radius = 10.0;
-
-    let view: [[f32; 4]; 4] =
-        na::Matrix4::new_translation(&na::Vector3::new(0.0, 0.0, -3.0)).into();
     let projection: [[f32; 4]; 4] =
         na::Perspective3::new(width as f32 / height as f32, 45.0, 0.1, 100.0)
             .into_inner()
@@ -53,41 +50,31 @@ fn main() {
 
     let last_time = Instant::now();
 
-    let mut mix_level: f32 = 0.5;
+    let mix_level: f32 = 0.5;
     let mut exit = false;
+    let camera_pos = na::Vector3::new(0.0, 0.0, 3.0);
+    let camera_front = na::Vector3::new(0.0, 0.0, -1.0);
+    let up = na::Vector3::y();
+    let mut camera = Camera::new(camera_pos, camera_front, up);
+    let mut input_buffer: HashMap<glutin::VirtualKeyCode, glutin::ElementState> = HashMap::new();
+
     while !exit {
+        let _time_since: f32 = last_time.elapsed().as_millis() as f32 / 1000.0;
+
         event_loop.poll_events(|e| match e {
             glutin::Event::WindowEvent { event, .. } => match event {
                 glutin::WindowEvent::CloseRequested => exit = true,
                 glutin::WindowEvent::KeyboardInput { input, .. } => {
-                    if let glutin::ElementState::Pressed = input.state {
-                        let mix_add = if let Some(key) = input.virtual_keycode {
-                            match key {
-                                glutin::VirtualKeyCode::Up => 0.1,
-                                glutin::VirtualKeyCode::Down => -0.1,
-                                _ => 0.0,
-                            }
-                        } else {
-                            0.0
-                        };
-
-                        mix_level = (mix_level + mix_add).min(1.0).max(0.0);
-                    }
+                    process_input(input, &mut input_buffer, &mut camera)
                 }
                 _ => (),
             },
             _ => (),
         });
 
-        let time_since: f32 = last_time.elapsed().as_millis() as f32 / 1000.0;
+        camera.update();
 
-        let cam_x = time_since.sin() * radius;
-        let cam_z = time_since.cos() * radius;
-        let camera_pos = na::Point3::new(cam_x, 0.0, cam_z);
-        let target = na::Point3::origin();
-        let up = na::Vector3::y();
-
-        let view = na::Matrix4::look_at_rh(&camera_pos, &target, &up);
+        let view = camera.view();
         let view: [[f32; 4]; 4] = view.into();
 
         let mut target = display.draw();
@@ -134,4 +121,86 @@ where
     let image =
         glium::texture::RawImage2d::from_raw_rgba_reversed(&image.into_raw(), image_dimensions);
     glium::texture::Texture2d::new(display, image).expect("texture")
+}
+
+fn process_input(
+    input: glutin::KeyboardInput,
+    input_buffer: &mut HashMap<glutin::VirtualKeyCode, glutin::ElementState>,
+    camera: &mut Camera,
+) {
+    println!("{:#?}", input);
+    let camera_speed = 0.005;
+    let mut new_camera_velocity = na::Vector3::<f32>::identity();
+
+    if let Some(key) = input.virtual_keycode {
+        use glutin::VirtualKeyCode;
+
+        if input.state
+            == *input_buffer
+                .entry(key)
+                .or_insert(glutin::ElementState::Released)
+        {
+            return;
+        }
+        input_buffer.insert(key, input.state);
+
+        match key {
+            VirtualKeyCode::W => new_camera_velocity = camera.front() * camera_speed,
+            VirtualKeyCode::S => new_camera_velocity = -camera.front() * camera_speed,
+            VirtualKeyCode::A => {
+                new_camera_velocity = -camera.front().cross(&camera.up()).normalize() * camera_speed
+            }
+            VirtualKeyCode::D => {
+                new_camera_velocity = camera.front().cross(&camera.up()).normalize() * camera_speed
+            }
+            _ => (),
+        }
+    }
+    camera.velocity += if let glutin::ElementState::Pressed = input.state {
+        new_camera_velocity
+    } else {
+        -new_camera_velocity
+    };
+}
+
+struct Camera {
+    position: na::Vector3<f32>,
+    front: na::Vector3<f32>,
+    up: na::Vector3<f32>,
+    velocity: na::Vector3<f32>,
+}
+
+impl Camera {
+    fn new(position: na::Vector3<f32>, front: na::Vector3<f32>, up: na::Vector3<f32>) -> Camera {
+        Camera {
+            position,
+            front,
+            up,
+            velocity: na::Vector3::<f32>::zeros(),
+        }
+    }
+
+    fn target(&self) -> na::Point3<f32> {
+        na::Point3::from(self.position + self.front)
+    }
+
+    fn view(&self) -> na::Matrix4<f32> {
+        na::Matrix4::look_at_rh(&na::Point3::from(self.position), &self.target(), &self.up)
+    }
+
+    fn front(&self) -> na::Vector3<f32> {
+        self.front
+    }
+
+    fn up(&self) -> na::Vector3<f32> {
+        self.up
+    }
+
+    fn translate(&mut self, offset: na::Vector3<f32>) {
+        self.position += offset
+    }
+
+    fn update(&mut self) {
+        self.translate(self.velocity)
+    }
 }
