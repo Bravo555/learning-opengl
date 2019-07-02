@@ -58,8 +58,12 @@ fn main() {
     let mut camera = Camera::new(camera_pos, camera_front, up);
     let mut input_buffer: HashMap<glutin::VirtualKeyCode, glutin::ElementState> = HashMap::new();
 
+    let mut last_frame = 0.0;
+
     while !exit {
-        let _time_since: f32 = last_time.elapsed().as_millis() as f32 / 1000.0;
+        let current_frame: f32 = last_time.elapsed().as_millis() as f32 / 1000.0;
+        let delta_time = current_frame - last_frame;
+        last_frame = current_frame;
 
         event_loop.poll_events(|e| match e {
             glutin::Event::WindowEvent { event, .. } => match event {
@@ -72,7 +76,7 @@ fn main() {
             _ => (),
         });
 
-        camera.update();
+        camera.update(delta_time);
 
         let view = camera.view();
         let view: [[f32; 4]; 4] = view.into();
@@ -129,7 +133,7 @@ fn process_input(
     camera: &mut Camera,
 ) {
     println!("{:#?}", input);
-    let camera_speed = 0.005;
+    let camera_speed = 2.5;
     let mut new_camera_velocity = na::Vector3::<f32>::identity();
 
     if let Some(key) = input.virtual_keycode {
@@ -200,7 +204,7 @@ impl Camera {
         self.position += offset
     }
 
-    fn update(&mut self) {
-        self.translate(self.velocity)
+    fn update(&mut self, delta_time: f32) {
+        self.translate(self.velocity * delta_time)
     }
 }
