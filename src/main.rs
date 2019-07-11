@@ -56,9 +56,13 @@ fn main() {
     let camera_front = na::Vector3::new(0.0, 0.0, -1.0);
     let up = na::Vector3::y();
     let mut camera = Camera::new(camera_pos, camera_front, up);
-    let mut input_buffer: HashMap<glutin::VirtualKeyCode, glutin::ElementState> = HashMap::new();
 
     let mut last_frame = 0.0;
+
+    display.gl_window().window().grab_cursor(true).unwrap();
+    display.gl_window().window().hide_cursor(true);
+
+    let mut keyboard_state = KeyboardState::new();
 
     while !exit {
         let current_frame: f32 = last_time.elapsed().as_millis() as f32 / 1000.0;
@@ -68,18 +72,23 @@ fn main() {
         event_loop.poll_events(|e| match e {
             glutin::Event::WindowEvent { event, .. } => match event {
                 glutin::WindowEvent::CloseRequested => exit = true,
-                glutin::WindowEvent::KeyboardInput { input, .. } => {
-                    process_input(input, &mut input_buffer, &mut camera)
+                _ => (),
+            },
+            glutin::Event::DeviceEvent { event, .. } => match event {
+                glutin::DeviceEvent::MouseMotion { delta, .. } => {
+                    handle_mouse_move(delta, &mut camera, delta_time);
                 }
+                glutin::DeviceEvent::Key(event) => keyboard_state.process_event(event),
+                glutin::DeviceEvent::MouseWheel { delta } => {}
                 _ => (),
             },
             _ => (),
         });
+        process_keyboard(&keyboard_state, &mut camera, delta_time);
 
         camera.update(delta_time);
 
-        let view = camera.view();
-        let view: [[f32; 4]; 4] = view.into();
+        let view: [[f32; 4]; 4] = camera.view().into();
 
         let mut target = display.draw();
         target.clear_color_and_depth((0.1, 0.1, 0.1, 1.0), 1.0);
@@ -127,51 +136,41 @@ where
     glium::texture::Texture2d::new(display, image).expect("texture")
 }
 
-fn process_input(
-    input: glutin::KeyboardInput,
-    input_buffer: &mut HashMap<glutin::VirtualKeyCode, glutin::ElementState>,
-    camera: &mut Camera,
-) {
-    println!("{:#?}", input);
-    let camera_speed = 2.5;
-    let mut new_camera_velocity = na::Vector3::<f32>::identity();
+fn process_keyboard(keyboard: &KeyboardState, camera: &mut Camera, delta_time: f32) {
+    let camera_speed = 2.5 * delta_time;
+    use glutin::VirtualKeyCode;
 
-    if let Some(key) = input.virtual_keycode {
-        use glutin::VirtualKeyCode;
-
-        if input.state
-            == *input_buffer
-                .entry(key)
-                .or_insert(glutin::ElementState::Released)
-        {
-            return;
-        }
-        input_buffer.insert(key, input.state);
-
-        match key {
-            VirtualKeyCode::W => new_camera_velocity = camera.front() * camera_speed,
-            VirtualKeyCode::S => new_camera_velocity = -camera.front() * camera_speed,
-            VirtualKeyCode::A => {
-                new_camera_velocity = -camera.front().cross(&camera.up()).normalize() * camera_speed
-            }
-            VirtualKeyCode::D => {
-                new_camera_velocity = camera.front().cross(&camera.up()).normalize() * camera_speed
-            }
-            _ => (),
-        }
+    if keyboard.is_pressed(&VirtualKeyCode::W) {
+        camera.translate(camera.front() * camera_speed);
     }
-    camera.velocity += if let glutin::ElementState::Pressed = input.state {
-        new_camera_velocity
-    } else {
-        -new_camera_velocity
-    };
+    if keyboard.is_pressed(&VirtualKeyCode::S) {
+        camera.translate(-camera.front() * camera_speed);
+    }
+    if keyboard.is_pressed(&VirtualKeyCode::A) {
+        camera.translate(-camera.front().cross(&camera.up()).normalize() * camera_speed);
+    }
+    if keyboard.is_pressed(&VirtualKeyCode::D) {
+        camera.translate(camera.front().cross(&camera.up()).normalize() * camera_speed);
+    }
 }
 
+fn handle_mouse_move(position: (f64, f64), camera: &mut Camera, delta_time: f32) {
+    let sensitivity = 25.0 * delta_time as f64;
+    let offset_x = sensitivity * position.0;
+    let offset_y = sensitivity * position.1 * -1.0; // y increases as mouse is moving down so mouse down = pitch up. -1 inverts that
+    camera.rotate(offset_y as f32, offset_x as f32);
+}
+
+#[derive(Debug)]
 struct Camera {
     position: na::Vector3<f32>,
     front: na::Vector3<f32>,
     up: na::Vector3<f32>,
-    velocity: na::Vector3<f32>,
+
+    yaw: f32,
+    pitch: f32,
+
+    fov: f32,
 }
 
 impl Camera {
@@ -180,7 +179,11 @@ impl Camera {
             position,
             front,
             up,
-            velocity: na::Vector3::<f32>::zeros(),
+
+            yaw: 270.0,
+            pitch: 0.0,
+
+            fov: 45.0,
         }
     }
 
@@ -204,7 +207,52 @@ impl Camera {
         self.position += offset
     }
 
+    fn rotate(&mut self, pitch: f32, yaw: f32) {
+        self.pitch = (self.pitch + pitch).min(89.0).max(-89.0);
+        self.yaw += yaw;
+    }
+
     fn update(&mut self, delta_time: f32) {
-        self.translate(self.velocity * delta_time)
+        // recalculate rotation
+        let pitch = self.pitch.to_radians();
+        let yaw = self.yaw.to_radians();
+        let dir_x = pitch.cos() * yaw.cos();
+        let dir_y = pitch.sin();
+        let dir_z = pitch.cos() * yaw.sin();
+
+        let front = na::Vector3::new(dir_x, dir_y, dir_z);
+        self.front = front.normalize();
+    }
+}
+
+struct KeyboardState {
+    state: HashMap<glutin::VirtualKeyCode, glutin::ElementState>,
+}
+
+impl KeyboardState {
+    fn new() -> KeyboardState {
+        KeyboardState {
+            state: HashMap::new(),
+        }
+    }
+
+    fn is_pressed(&self, key: &glutin::VirtualKeyCode) -> bool {
+        self.state
+            .get(key)
+            .map(|&s| s == glutin::ElementState::Pressed)
+            .unwrap_or(false)
+    }
+
+    fn is_released(&self, key: &glutin::VirtualKeyCode) -> bool {
+        !self.is_pressed(key)
+    }
+
+    fn process_event(&mut self, event: glutin::KeyboardInput) {
+        if let Some(key) = event.virtual_keycode {
+            match event.state {
+                glutin::ElementState::Pressed => self.state.insert(key, event.state),
+                glutin::ElementState::Released => self.state.remove(&key),
+            };
+        }
     }
 }
