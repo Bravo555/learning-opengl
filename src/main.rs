@@ -5,11 +5,11 @@ use nalgebra as na;
 use points::{Vertex, SHAPE};
 use std::collections::HashMap;
 use std::time::Instant;
-implement_vertex!(Vertex, position);
+implement_vertex!(Vertex, position, normal);
 
 fn main() {
-    let cube_vertex_shader = include_str!("triangle.vert");
-    let cube_fragment_shader = include_str!("triangle.frag");
+    let cube_vertex_shader = include_str!("lighting.vert");
+    let cube_fragment_shader = include_str!("lighting.frag");
 
     let light_vertex_shader = include_str!("lamp.vert");
     let light_fragment_shader = include_str!("lamp.frag");
@@ -28,8 +28,6 @@ fn main() {
     let light_model: [[f32; 4]; 4] = na::Matrix4::new_translation(&light_pos)
         .prepend_scaling(0.2)
         .into();
-
-    println!("{:#?}", light_model);
 
     let cube_program =
         glium::Program::from_source(&display, cube_vertex_shader, cube_fragment_shader, None)
@@ -96,12 +94,17 @@ fn main() {
             ..Default::default()
         };
 
+        let light_pos: [f32; 3] = light_pos.into();
+        let camera_pos: [f32; 3] = camera.position.into();
+
         let cube_uniforms = uniform! {
             model: cube_model,
             view: view,
             projection: projection,
-            objectColor: [1.0f32, 0.5, 0.31],
-            lightColor: [1.0f32, 1.0, 1.0]
+            objectColor: [1.0f32, 0.5f32, 0.31f32],
+            lightColor: [1.0f32, 1.0f32, 1.0f32],
+            lightPos: light_pos,
+            cameraPosition: camera_pos
         };
         let light_uniforms = uniform! {
             model: light_model,
