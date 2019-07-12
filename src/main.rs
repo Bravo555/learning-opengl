@@ -5,41 +5,38 @@ use nalgebra as na;
 use points::{Vertex, SHAPE};
 use std::collections::HashMap;
 use std::time::Instant;
-implement_vertex!(Vertex, position, texture);
+implement_vertex!(Vertex, position);
 
 fn main() {
-    let vertex_shader = include_str!("triangle.vert");
-    let fragment_shader = include_str!("triangle.frag");
+    let cube_vertex_shader = include_str!("triangle.vert");
+    let cube_fragment_shader = include_str!("triangle.frag");
+
+    let light_vertex_shader = include_str!("lamp.vert");
+    let light_fragment_shader = include_str!("lamp.frag");
 
     let mut event_loop = glutin::EventsLoop::new();
     let wb = glutin::WindowBuilder::new();
     let cb = glutin::ContextBuilder::new().with_depth_buffer(24);
     let display = glium::Display::new(wb, cb, &event_loop).unwrap();
 
-    let texture = load_texture("assets/wall.jpg", &display);
-    let texture2 = load_texture("assets/face.png", &display);
-
-    let models: Vec<na::Matrix4<f32>> = vec![
-        (0.0, 0.0, 0.0),
-        (2.0, 5.0, -15.0),
-        (-1.5, -2.2, -2.5),
-        (-3.8, -2.0, -12.3),
-        (2.4, -0.4, -3.5),
-        (-1.7, 3.0, -7.5),
-        (1.3, -2.0, -2.5),
-        (1.5, 2.0, -2.5),
-        (1.5, 0.2, -1.5),
-        (-1.3, 1.0, -1.5),
-    ]
-    .into_iter()
-    .map(|m| na::Matrix4::new_translation(&na::Vector3::new(m.0, m.1, m.2)))
-    .collect();
-
     let vertex_buffer = glium::VertexBuffer::new(&display, &SHAPE).unwrap();
     let indices = glium::index::NoIndices(glium::index::PrimitiveType::TrianglesList);
 
-    let program =
-        glium::Program::from_source(&display, vertex_shader, fragment_shader, None).unwrap();
+    let cube_model: [[f32; 4]; 4] = na::Matrix4::identity().into();
+
+    let light_pos = na::Vector3::new(1.2, 1.0, 2.0);
+    let light_model: [[f32; 4]; 4] = na::Matrix4::new_translation(&light_pos)
+        .prepend_scaling(0.2)
+        .into();
+
+    println!("{:#?}", light_model);
+
+    let cube_program =
+        glium::Program::from_source(&display, cube_vertex_shader, cube_fragment_shader, None)
+            .unwrap();
+    let light_program =
+        glium::Program::from_source(&display, light_vertex_shader, light_fragment_shader, None)
+            .unwrap();
 
     let (width, height) = display.get_framebuffer_dimensions();
 
@@ -48,15 +45,13 @@ fn main() {
             .into_inner()
             .into();
 
-    let last_time = Instant::now();
-
-    let mix_level: f32 = 0.5;
     let mut exit = false;
     let camera_pos = na::Vector3::new(0.0, 0.0, 3.0);
     let camera_front = na::Vector3::new(0.0, 0.0, -1.0);
     let up = na::Vector3::y();
     let mut camera = Camera::new(camera_pos, camera_front, up);
 
+    let last_time = Instant::now();
     let mut last_frame = 0.0;
 
     display.gl_window().window().grab_cursor(true).unwrap();
@@ -86,7 +81,7 @@ fn main() {
         });
         process_keyboard(&keyboard_state, &mut camera, delta_time);
 
-        camera.update(delta_time);
+        camera.update();
 
         let view: [[f32; 4]; 4] = camera.view().into();
 
@@ -101,25 +96,38 @@ fn main() {
             ..Default::default()
         };
 
-        models.iter().enumerate().for_each(|(i, val)| {
-            let angle = 20.0 * i as f32;
-            let rotation = na::Rotation3::new(na::Vector3::new(1.0, 0.3, 0.5) * angle.to_radians())
-                .to_homogeneous();
+        let cube_uniforms = uniform! {
+            model: cube_model,
+            view: view,
+            projection: projection,
+            objectColor: [1.0f32, 0.5, 0.31],
+            lightColor: [1.0f32, 1.0, 1.0]
+        };
+        let light_uniforms = uniform! {
+            model: light_model,
+            view: view,
+            projection: projection,
+        };
 
-            let model: [[f32; 4]; 4] = (val * rotation).into();
+        target
+            .draw(
+                &vertex_buffer,
+                &indices,
+                &cube_program,
+                &cube_uniforms,
+                &params,
+            )
+            .unwrap();
 
-            let uniforms = uniform! {
-                model: model,
-                view: view,
-                projection: projection,
-                tex: &texture,
-                tex2: &texture2,
-                mix_level: mix_level
-            };
-            target
-                .draw(&vertex_buffer, &indices, &program, &uniforms, &params)
-                .unwrap();
-        });
+        target
+            .draw(
+                &vertex_buffer,
+                &indices,
+                &light_program,
+                &light_uniforms,
+                &params,
+            )
+            .unwrap();
 
         target.finish().unwrap();
     }
@@ -155,7 +163,7 @@ fn process_keyboard(keyboard: &KeyboardState, camera: &mut Camera, delta_time: f
 }
 
 fn handle_mouse_move(position: (f64, f64), camera: &mut Camera, delta_time: f32) {
-    let sensitivity = 25.0 * delta_time as f64;
+    let sensitivity = 50.0 * delta_time as f64;
     let offset_x = sensitivity * position.0;
     let offset_y = sensitivity * position.1 * -1.0; // y increases as mouse is moving down so mouse down = pitch up. -1 inverts that
     camera.rotate(offset_y as f32, offset_x as f32);
@@ -212,7 +220,7 @@ impl Camera {
         self.yaw += yaw;
     }
 
-    fn update(&mut self, delta_time: f32) {
+    fn update(&mut self) {
         // recalculate rotation
         let pitch = self.pitch.to_radians();
         let yaw = self.yaw.to_radians();

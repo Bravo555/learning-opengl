@@ -1,15 +1,10 @@
-#version 150 core
+#version 330 core
 
-in VS_OUTPUT {
-    vec2 texture;
-} IN;
+uniform vec3 objectColor;
+uniform vec3 lightColor;
 
 out vec4 color;
 
-uniform sampler2D tex;
-uniform sampler2D tex2;
-uniform float mix_level;
-
 void main() {
-    color = mix(texture(tex, IN.texture), texture(tex2, IN.texture), mix_level);
+    color = vec4(lightColor * objectColor, 1.0);
 }
