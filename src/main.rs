@@ -24,11 +24,6 @@ fn main() {
 
     let cube_model: [[f32; 4]; 4] = na::Matrix4::identity().into();
 
-    let light_pos = na::Vector3::new(1.2, 1.0, 2.0);
-    let light_model: [[f32; 4]; 4] = na::Matrix4::new_translation(&light_pos)
-        .prepend_scaling(0.2)
-        .into();
-
     let cube_program =
         glium::Program::from_source(&display, cube_vertex_shader, cube_fragment_shader, None)
             .unwrap();
@@ -94,7 +89,16 @@ fn main() {
             ..Default::default()
         };
 
+        let light_pos = na::Vector3::new(
+            last_time.elapsed().as_secs_f32().sin(),
+            1.0,
+            last_time.elapsed().as_secs_f32().cos(),
+        );
+        let light_model: [[f32; 4]; 4] = na::Matrix4::new_translation(&light_pos)
+            .prepend_scaling(0.2)
+            .into();
         let light_pos: [f32; 3] = light_pos.into();
+
         let camera_pos: [f32; 3] = camera.position.into();
 
         let cube_uniforms = uniform! {
