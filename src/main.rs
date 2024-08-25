@@ -175,6 +175,12 @@ fn process_keyboard(keyboard: &KeyboardState, camera: &mut Camera, delta_time: f
     if keyboard.is_pressed(&VirtualKeyCode::D) {
         camera.translate(camera.front().cross(&camera.up()).normalize() * camera_speed);
     }
+    if keyboard.is_pressed(&VirtualKeyCode::Space) {
+        camera.translate(na::Vector3::y() * camera_speed);
+    }
+    if keyboard.is_pressed(&VirtualKeyCode::LControl) {
+        camera.translate(-na::Vector3::y() * camera_speed);
+    }
 }
 
 fn handle_mouse_move(position: (f64, f64), camera: &mut Camera) {
