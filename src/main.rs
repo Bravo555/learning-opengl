@@ -4,8 +4,10 @@ use glium::{glutin, implement_vertex, uniform, Surface};
 use nalgebra as na;
 use points::{Vertex, SHAPE};
 use std::collections::HashMap;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 implement_vertex!(Vertex, position, normal);
+
+const MAX_FPS: u16 = 500;
 
 fn main() {
     let cube_vertex_shader = include_str!("lighting.vert");
@@ -53,9 +55,16 @@ fn main() {
     let mut keyboard_state = KeyboardState::new();
 
     while !exit {
-        let current_frame: f32 = last_time.elapsed().as_millis() as f32 / 1000.0;
-        let delta_time = current_frame - last_frame;
-        last_frame = current_frame;
+        let current_frame_secs = last_time.elapsed().as_secs_f64() as f32;
+        let mut delta_time = current_frame_secs - last_frame;
+        let sleep_duration = (1.0f32 / MAX_FPS as f32) - delta_time;
+        if sleep_duration > 0.0 {
+            std::thread::sleep(Duration::from_secs_f32(sleep_duration));
+            delta_time += sleep_duration;
+        }
+        last_frame = current_frame_secs;
+
+        println!("delta time={delta_time}, fps={}FPS", 1.0 / delta_time);
 
         event_loop.poll_events(|e| match e {
             glutin::Event::WindowEvent { event, .. } => match event {
@@ -170,7 +179,7 @@ fn process_keyboard(keyboard: &KeyboardState, camera: &mut Camera, delta_time: f
 }
 
 fn handle_mouse_move(position: (f64, f64), camera: &mut Camera, delta_time: f32) {
-    let sensitivity = 50.0 * delta_time as f64;
+    let sensitivity = 0.2 as f64;
     let offset_x = sensitivity * position.0;
     let offset_y = sensitivity * position.1 * -1.0; // y increases as mouse is moving down so mouse down = pitch up. -1 inverts that
     camera.rotate(offset_y as f32, offset_x as f32);
@@ -237,6 +246,8 @@ impl Camera {
 
         let front = na::Vector3::new(dir_x, dir_y, dir_z);
         self.front = front.normalize();
+
+        println!("mouse angles: ({pitch}, {yaw})");
     }
 }
 
