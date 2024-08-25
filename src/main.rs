@@ -67,16 +67,15 @@ fn main() {
         println!("delta time={delta_time}, fps={}FPS", 1.0 / delta_time);
 
         event_loop.poll_events(|e| match e {
-            glutin::Event::WindowEvent { event, .. } => match event {
-                glutin::WindowEvent::CloseRequested => exit = true,
-                _ => (),
-            },
+            glutin::Event::WindowEvent {
+                event: glutin::WindowEvent::CloseRequested,
+                ..
+            } => exit = true,
             glutin::Event::DeviceEvent { event, .. } => match event {
                 glutin::DeviceEvent::MouseMotion { delta, .. } => {
-                    handle_mouse_move(delta, &mut camera, delta_time);
+                    handle_mouse_move(delta, &mut camera);
                 }
                 glutin::DeviceEvent::Key(event) => keyboard_state.process_event(event),
-                glutin::DeviceEvent::MouseWheel { delta } => {}
                 _ => (),
             },
             _ => (),
@@ -128,7 +127,7 @@ fn main() {
         target
             .draw(
                 &vertex_buffer,
-                &indices,
+                indices,
                 &cube_program,
                 &cube_uniforms,
                 &params,
@@ -138,7 +137,7 @@ fn main() {
         target
             .draw(
                 &vertex_buffer,
-                &indices,
+                indices,
                 &light_program,
                 &light_uniforms,
                 &params,
@@ -178,8 +177,8 @@ fn process_keyboard(keyboard: &KeyboardState, camera: &mut Camera, delta_time: f
     }
 }
 
-fn handle_mouse_move(position: (f64, f64), camera: &mut Camera, delta_time: f32) {
-    let sensitivity = 0.2 as f64;
+fn handle_mouse_move(position: (f64, f64), camera: &mut Camera) {
+    let sensitivity = 0.2_f64;
     let offset_x = sensitivity * position.0;
     let offset_y = sensitivity * position.1 * -1.0; // y increases as mouse is moving down so mouse down = pitch up. -1 inverts that
     camera.rotate(offset_y as f32, offset_x as f32);
@@ -232,7 +231,7 @@ impl Camera {
     }
 
     fn rotate(&mut self, pitch: f32, yaw: f32) {
-        self.pitch = (self.pitch + pitch).min(89.0).max(-89.0);
+        self.pitch = (self.pitch + pitch).clamp(-89.0, 89.0);
         self.yaw += yaw;
     }
 
